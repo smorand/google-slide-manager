@@ -1,0 +1,12 @@
+# Binary
+google-slide-manager
+
+# Go build artifacts
+src/go.sum
+
+# Test files
+*.pdf
+*.pptx
+
+# OS files
+.DS_Store
