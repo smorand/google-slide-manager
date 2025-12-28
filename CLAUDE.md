@@ -17,36 +17,82 @@ Command-line tool for comprehensive Google Slides management built in Go using t
 
 ### Project Structure
 
+Following **Standard Go Project Layout**:
+
 ```
 google-slide-manager/
-├── Makefile              # Build automation
-├── README.md             # Human-oriented documentation
-├── CLAUDE.md             # This file - AI-oriented documentation
-└── src/                  # Go source code
-    ├── main.go           # Entry point, command registration, flag initialization
-    ├── cli.go            # All CLI command definitions and implementations
-    └── auth.go           # OAuth2 authentication and credential management
+├── Makefile                       # Build automation
+├── README.md                      # Human-oriented documentation
+├── CLAUDE.md                      # This file - AI-oriented documentation
+├── go.mod                         # Go module definition
+├── go.sum                         # Dependency checksums
+├── cmd/                           # Main applications
+│   └── google-slide-manager/      # Binary entry point
+│       └── main.go                # Minimal entry point (wiring only)
+└── internal/                      # Private application code
+    ├── auth/                      # Authentication package
+    │   └── auth.go                # OAuth2 client and service creation
+    ├── cli/                       # CLI command definitions
+    │   └── cli.go                 # Cobra commands and flag management
+    ├── presentation/              # Presentation operations
+    │   └── presentation.go        # Create and get presentations
+    ├── slide/                     # Slide operations
+    │   └── slide.go               # Add, duplicate, move, remove, reorder slides
+    ├── table/                     # Table operations
+    │   └── table.go               # Create tables, update cells, apply styles
+    ├── text/                      # Text operations
+    │   └── text.go                # Extract, replace, search text
+    ├── notes/                     # Speaker notes operations
+    │   └── notes.go               # Get, add, extract notes
+    ├── shape/                     # Shape operations
+    │   └── shape.go               # Add shapes to slides
+    ├── style/                     # Style operations
+    │   └── style.go               # Copy text styles, themes, translations (placeholders)
+    └── export/                    # Export operations
+        └── export.go              # Export to PDF and PPTX
 ```
 
-## File Descriptions
+## Package Descriptions
 
-### src/main.go
-**Purpose**: Application entry point and command registration
+### cmd/google-slide-manager/main.go
+**Purpose**: Minimal application entry point
 
 **Key Components**:
-- `rootCmd`: Root cobra command definition
-- `main()`: Initializes flags and registers all commands
+- `main()`: Calls `cli.Execute()` and handles errors
 
-**Important**: Flags are initialized in `main()` function, not in `init()` functions (per golang standards).
+**Design**: Following Go best practices, main.go contains only initialization and error handling. All business logic is in `internal/` packages.
 
-### src/cli.go
-**Purpose**: All CLI command implementations
+### internal/auth/auth.go
+**Purpose**: OAuth2 authentication and service creation
+
+**Exported Functions**:
+- `GetCredentialsPath()`: Returns path to credentials directory
+- `GetClient(ctx)`: Creates authenticated HTTP client
+- `GetSlidesService(ctx)`: Creates Slides API service
+- `GetDriveService(ctx)`: Creates Drive API service
+
+**Credentials Location**:
+- Credentials: `~/.gdrive/credentials.json`
+- Token: `~/.gdrive/token.json`
+
+**API Scopes**:
+```go
+scopes = []string{
+    slides.PresentationsScope,
+    drive.DriveScope,
+    "https://www.googleapis.com/auth/cloud-translation",
+}
+```
+
+### internal/cli/cli.go
+**Purpose**: CLI command definitions and flag management
 
 **Structure**:
-- Package-level variables for command flags (grouped by command)
+- Package-level flag variables (grouped by command)
+- Command initialization functions (initXxxCommands)
 - Command definitions (cobra.Command structs)
 - Command execution functions (runXxx functions)
-- Helper functions (parseColor, printJSON)
+- Helper functions (printJSON)
 
 **Command Categories**:
 1. **Presentation Operations**: create-presentation
@@ -55,9 +101,8 @@ google-slide-manager/
 4. **Text Operations**: replace-text, extract-all-text, search-text
 5. **Notes Operations**: get-notes, add-notes, extract-all-notes
 6. **Shape Operations**: add-shape
-7. **Style Operations**: copy-text-style, copy-theme
-8. **Translation**: translate-slides
-9. **Export**: export-pdf, export-pptx
+7. **Style Operations**: copy-text-style, copy-theme, translate-slides
+8. **Export**: export-pdf, export-pptx
 
 **Flag Variables** (package-level):
 - `createPresentationFolderID`: Folder ID for new presentations
@@ -65,47 +110,153 @@ google-slide-manager/
 - `addSlidePosition`: Position for new slides
 - `styleCellBgColor`: Background color for cell styling
 
-### src/auth.go
-**Purpose**: Google OAuth2 authentication and credential management
+### internal/presentation/presentation.go
+**Purpose**: Presentation-level operations
 
-**Key Functions**:
-- `getCredentialsPath()`: Returns path to `~/.credentials` directory
-- `getClient(ctx)`: Creates authenticated HTTP client
-- `getSlidesService(ctx)`: Creates Slides API service
-- `getDriveService(ctx)`: Creates Drive API service
-- `getTokenFromWeb(config)`: Performs OAuth2 web flow
-- `tokenFromFile(path)`: Loads existing token
-- `saveToken(path, token)`: Saves OAuth2 token
+**Service Type**:
+- `Service`: Wraps Slides and Drive services
 
-**Credentials Location**:
-- Credentials: `~/.credentials/google_credentials.json`
-- Token: `~/.credentials/google_token.json`
+**Methods**:
+- `NewService(ctx, slidesService, driveService)`: Creates service instance
+- `Create(ctx, title, folderID)`: Creates new presentation
+- `Get(ctx, presentationID)`: Retrieves presentation by ID
 
-**API Scopes**:
-```go
-scopes = []string{
-    slides.PresentationsScope,
-    drive.DriveFileScope,
-    "https://www.googleapis.com/auth/cloud-translation",
-}
-```
+### internal/slide/slide.go
+**Purpose**: Slide manipulation operations
+
+**Service Type**:
+- `Service`: Wraps Slides service
+
+**Methods**:
+- `NewService(ctx, slidesService)`: Creates service instance
+- `Add(ctx, presentationID, layout, position)`: Adds new slide
+- `Duplicate(ctx, presentationID, slideIndex)`: Duplicates slide
+- `Move(ctx, presentationID, slideIndex, newPosition)`: Moves slide
+- `Remove(ctx, presentationID, slideIndex)`: Removes slide
+- `Reorder(ctx, presentationID, indicesStr)`: Reorders slides
+
+**Object ID Generation**: Uses timestamp-based unique IDs (`generateObjectID`)
+
+### internal/table/table.go
+**Purpose**: Table creation and styling
+
+**Service Type**:
+- `Service`: Wraps Slides service
+
+**Methods**:
+- `NewService(ctx, slidesService)`: Creates service instance
+- `Create(ctx, presentationID, slideIndex, rows, cols)`: Creates table
+- `UpdateCell(ctx, presentationID, tableID, row, col, text)`: Updates cell content
+- `StyleCell(ctx, presentationID, tableID, row, col, bgColor)`: Applies cell styling
+
+**Helper Functions**:
+- `parseColor(hexColor)`: Converts hex color to OpaqueColor
+
+### internal/text/text.go
+**Purpose**: Text extraction, replacement, and search
+
+**Service Type**:
+- `Service`: Wraps Slides service
+
+**Types**:
+- `SearchResult`: Represents search result with slide index, object ID, and text
+
+**Methods**:
+- `NewService(ctx, slidesService)`: Creates service instance
+- `ExtractAll(ctx, presentationID)`: Extracts all text from presentation
+- `Replace(ctx, presentationID, findText, replaceText)`: Replaces text
+- `Search(ctx, presentationID, query)`: Searches for text
+
+### internal/notes/notes.go
+**Purpose**: Speaker notes operations
+
+**Service Type**:
+- `Service`: Wraps Slides service
+
+**Methods**:
+- `NewService(ctx, slidesService)`: Creates service instance
+- `Get(ctx, presentationID, slideIndex)`: Gets speaker notes from slide
+- `Add(ctx, presentationID, slideIndex, notesContent)`: Adds speaker notes
+- `ExtractAll(ctx, presentationID)`: Extracts all speaker notes
+
+### internal/shape/shape.go
+**Purpose**: Shape creation and manipulation
+
+**Service Type**:
+- `Service`: Wraps Slides service
+
+**Methods**:
+- `NewService(ctx, slidesService)`: Creates service instance
+- `Add(ctx, presentationID, slideIndex, shapeType)`: Adds shape to slide
+
+### internal/style/style.go
+**Purpose**: Style and translation operations (placeholder implementations)
+
+**Service Type**:
+- `Service`: Wraps Slides service
+
+**Methods** (all placeholders):
+- `NewService(ctx, slidesService)`: Creates service instance
+- `CopyTextStyle(ctx, presentationID, sourceObjectID, targetObjectID)`: Placeholder
+- `CopyTheme(ctx, sourcePresentationID, targetPresentationID)`: Placeholder
+- `TranslateSlides(ctx, presentationID, targetLanguage)`: Placeholder
+
+### internal/export/export.go
+**Purpose**: Export presentations to various formats
+
+**Service Type**:
+- `Service`: Wraps Drive service
+
+**Methods**:
+- `NewService(ctx, driveService)`: Creates service instance
+- `ToPDF(ctx, presentationID, outputFile)`: Exports as PDF
+- `ToPPTX(ctx, presentationID, outputFile)`: Exports as PowerPoint
 
 ## Key Design Patterns
 
-### Command Pattern
-Each operation is implemented as a separate cobra command with:
-1. Command definition (`var xxxCmd = &cobra.Command{...}`)
-2. Flag variables (package-level, grouped by command)
-3. Execution function (`func runXxx(cmd, args) error`)
+### Service Pattern
+Each domain package (presentation, slide, table, etc.) follows the service pattern:
+1. **Service Struct**: Wraps required Google API service(s)
+2. **Constructor**: `NewService(ctx, ...)` creates service instance
+3. **Methods**: Domain-specific operations on the service
+
+Example:
+```go
+type Service struct {
+    slidesService *slides.Service
+}
+
+func NewService(ctx context.Context, slidesService *slides.Service) *Service {
+    return &Service{slidesService: slidesService}
+}
+
+func (s *Service) Add(ctx context.Context, ...) error {
+    // Implementation
+}
+```
+
+### Separation of Concerns
+- **cmd/**: Entry point only, no business logic
+- **internal/auth/**: Authentication and service creation
+- **internal/cli/**: Command routing and flag parsing
+- **internal/{domain}/**: Business logic for specific domains
+- **Context Propagation**: All service methods accept `context.Context` as first parameter
+
+### Command Pattern (CLI)
+Each operation is implemented as a cobra command with:
+1. Initialization function (`initXxxCommands()`)
+2. Command definition (`var xxxCmd = &cobra.Command{...}`)
+3. Flag variables (package-level, grouped by command)
+4. Execution function (`func runXxx(cmd, args) error`)
 
 ### Error Handling
 - All errors are wrapped with context using `fmt.Errorf("message: %w", err)`
 - User-facing errors written to `os.Stderr`
 - Command output (IDs, JSON) written to `os.Stdout`
-- Success messages use colored output (green checkmarks)
+- Success messages use ✅ emoji
 
 ### Output Strategy
-- Success messages: `fmt.Fprintf(os.Stderr, "%s✅ Message%s\n", green, green)`
+- Success messages: `fmt.Fprintf(os.Stderr, "✅ Message\n")`
 - Errors: Return error from `RunE` function
 - Data output: `fmt.Println(data)` or `printJSON(data)`
 
@@ -173,14 +324,32 @@ make check          # Run fmt, vet, and test
 
 ### Adding New Commands
 
-1. **Define flag variables** (in cli.go):
+1. **Create or update service in internal/{domain}/**:
+```go
+package domain
+
+type Service struct {
+    slidesService *slides.Service
+}
+
+func NewService(ctx context.Context, slidesService *slides.Service) *Service {
+    return &Service{slidesService: slidesService}
+}
+
+func (s *Service) DoSomething(ctx context.Context, args ...interface{}) error {
+    // Implementation
+    return nil
+}
+```
+
+2. **Define flag variables in internal/cli/cli.go**:
 ```go
 var (
     commandNameFlagName string
 )
 ```
 
-2. **Define command** (in cli.go):
+3. **Define command in internal/cli/cli.go**:
 ```go
 var commandNameCmd = &cobra.Command{
     Use:   "command-name <args>",
@@ -190,25 +359,36 @@ var commandNameCmd = &cobra.Command{
 }
 ```
 
-3. **Implement execution function** (in cli.go):
+4. **Implement execution function in internal/cli/cli.go**:
 ```go
 func runCommandName(cmd *cobra.Command, args []string) error {
     ctx := context.Background()
-    // Implementation
+
+    slidesService, err := auth.GetSlidesService(ctx)
+    if err != nil {
+        return err
+    }
+
+    svc := domain.NewService(ctx, slidesService)
+    if err := svc.DoSomething(ctx, args...); err != nil {
+        return err
+    }
+
+    fmt.Fprintf(os.Stderr, "✅ Success message\n")
     return nil
 }
 ```
 
-4. **Register command and flags** (in main.go):
+5. **Register command in init function in internal/cli/cli.go**:
 ```go
-func main() {
-    // Initialize flags
+func initDomainCommands() {
     commandNameCmd.Flags().StringVar(&commandNameFlagName, "flag-name", "default", "Description")
-
-    // Add command
     rootCmd.AddCommand(commandNameCmd)
+}
 
-    // ... rest of main
+func init() {
+    // Add to existing init
+    initDomainCommands()
 }
 ```
 
@@ -221,13 +401,13 @@ The following commands have placeholder implementations:
 - `translate-slides`: Needs Translation API client integration
 
 ### Object ID Generation
-Some commands use simple object ID generation:
-- `add-slide`: Uses `fmt.Sprintf("slide_%d", len(args))` - should use timestamp or UUID
-- `create-table`: Uses `fmt.Sprintf("table_%d", slideIndex)` - should use timestamp or UUID
-- `add-shape`: Uses `fmt.Sprintf("shape_%d", slideIndex)` - should use timestamp or UUID
+**Fixed**: Now uses timestamp-based unique IDs via `generateObjectID(prefix)` function in each domain package:
+- `slide.Add()`: Uses `generateObjectID("slide")`
+- `table.Create()`: Uses `generateObjectID("table")`
+- `shape.Add()`: Uses `generateObjectID("shape")`
 
 ### Context Usage
-Currently all commands use `context.Background()` directly in the execution function. For better cancellation support, consider accepting context as parameter.
+All service methods properly accept `context.Context` as first parameter. CLI commands create context with `context.Background()` for now, but this can be enhanced with cancellation support in the future.
 
 ## Testing Strategy
 

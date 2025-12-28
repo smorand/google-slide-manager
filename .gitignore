@@ -1,8 +1,9 @@
-# Binary
+# Binaries
 google-slide-manager
+bin/
 
 # Go build artifacts
-src/go.sum
+go.sum
 
 # Test files
 *.pdf
