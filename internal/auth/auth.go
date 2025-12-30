@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	credentialsFileName     = "credentials.json"
-	tokenFileName           = "token.json"
+	credentialsFileName     = "google_credentials.json"
+	tokenFileName           = "token_gdrive.json"
 	translationAPIScope     = "https://www.googleapis.com/auth/cloud-translation"
 )
 
@@ -33,7 +33,7 @@ func GetCredentialsPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("unable to get home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ".gdrive"), nil
+	return filepath.Join(homeDir, ".credentials"), nil
 }
 
 // GetClient retrieves an OAuth2 HTTP client.
